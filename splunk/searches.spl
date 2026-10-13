@@ -1,0 +1,22 @@
+// Falcon Alert Hunting - starter Splunk searches for sourcetype crowdstrike:alert
+// Assumes the alerts land in index=main; change the index to match your HEC token.
+
+// 1. Alert volume by MITRE tactic and severity (last 24h)
+index=main sourcetype="crowdstrike:alert" earliest=-24h
+| stats count by mitre_tactic severity
+| sort - count
+
+// 2. Noisiest hosts, with the worst severity each one has seen
+index=main sourcetype="crowdstrike:alert" earliest=-24h
+| stats count dc(rule_name) as distinct_rules max(severity_score) as worst_score by host
+| sort - worst_score - count
+
+// 3. Open high/critical alerts that still need an analyst
+index=main sourcetype="crowdstrike:alert" earliest=-7d severity IN ("High","Critical") status!="closed"
+| table _time host user rule_name mitre_technique_id severity status action
+| sort - _time
+
+// 4. Same file hash on more than one host (possible lateral movement or spread)
+index=main sourcetype="crowdstrike:alert" earliest=-7d sha256=*
+| stats dc(host) as hosts values(host) as host_list values(rule_name) as rules by sha256
+| where hosts > 1
